@@ -19,10 +19,8 @@ package com.grapefruitopia.dashclock.k9;
 import java.util.ArrayList;
 import java.util.List;
 
-import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.database.Cursor;
 import android.net.Uri;
 import android.util.Log;
@@ -35,17 +33,6 @@ public class K9MailExtension extends DashClockExtension {
 
     public static final String PREF_NAME = "pref_name";
     
-	private final BroadcastReceiver receiver = new BroadcastReceiver() {
-		   @Override
-		   public void onReceive(Context context, Intent intent) {
-		      String action = intent.getAction();
-		      if(action.equals("com.fsck.k9.intent.action.EMAIL_RECEIVED")){
-		    	  Log.d(TAG, "EMAIL_RECIEVED");
-		    	  doRefresh();
-		      }   
-		   }
-		};
-    
     @Override
     protected void onInitialize(boolean isReconnect) {
     	super.onInitialize(isReconnect);
@@ -54,16 +41,6 @@ public class K9MailExtension extends DashClockExtension {
     	
     	String[] Uris = {"content://com.fsck.k9.messageprovider/account_unread/"};
     	addWatchContentUris(Uris);
-    	   	
-    	IntentFilter filter = new IntentFilter();
-    	filter.addAction("com.fsck.k9.intent.action.EMAIL_RECEIVED");
-
-    	registerReceiver(receiver, filter);
-    }
-    
-    @Override
-    public void onDestroy() {
-    	unregisterReceiver(receiver);
     }
     
     @Override
