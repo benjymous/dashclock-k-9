@@ -21,6 +21,7 @@ import java.util.List;
 
 import android.content.Context;
 import android.content.Intent;
+import android.database.ContentObserver;
 import android.database.Cursor;
 import android.net.Uri;
 import android.util.Log;
@@ -33,20 +34,46 @@ public class K9MailExtension extends DashClockExtension {
 
     public static final String PREF_NAME = "pref_name";
     
+	static final Uri k9AccountsUri = Uri.parse("content://com.fsck.k9.messageprovider/accounts/");
+	static final String k9UnreadUri = "content://com.fsck.k9.messageprovider/account_unread/";
+    
+	ContentObserver contentObserver = null;
+	
     @Override
     protected void onInitialize(boolean isReconnect) {
     	super.onInitialize(isReconnect);
     	
     	Log.d(TAG, "onInitialize("+isReconnect+")");
+   
     	
-    	String[] Uris = {"content://com.fsck.k9.messageprovider/account_unread/"};
-    	addWatchContentUris(Uris);
+    	// Register our own content observer, rather than using addWatchContentUris()
+    	// since DashClock might not have permission to access the database 	
+    	if(contentObserver == null) {
+	    	contentObserver = new ContentObserver(null) {
+	            @Override
+	            public void onChange(boolean selfChange) {
+	            	Log.d(TAG, "contentResolver.onChange()");
+	                doRefresh();
+	            }
+	        };
+	        getContentResolver().registerContentObserver(Uri.parse(k9UnreadUri), true, contentObserver);
+    	}
     }
     
     @Override
     protected void onUpdateData(int reason) {
     	Log.d(TAG, "onUpdateData("+reason+")");
     	doRefresh();
+    }
+    
+    @Override
+	public void onDestroy()
+    {
+    	Log.d(TAG, "onDestroy()");
+        if (contentObserver != null) {
+            getContentResolver().unregisterContentObserver(contentObserver);
+            contentObserver = null;
+        }
     }
     
     protected void doRefresh() {
@@ -82,9 +109,6 @@ public class K9MailExtension extends DashClockExtension {
 			}
 		}
 	}
-	
-	static final Uri k9AccountsUri = Uri.parse("content://com.fsck.k9.messageprovider/accounts/");
-	static final String k9UnreadUri = "content://com.fsck.k9.messageprovider/account_unread/";
 
 	private static int k9UnreadCount = 0;	
 
@@ -99,17 +123,17 @@ public class K9MailExtension extends DashClockExtension {
 		try {
 			Cursor cur = ch.add(context.getContentResolver().query(Uri.parse(k9UnreadUri+"/"+accountNumber+"/"), null, null, null, null));
 		    if (cur!=null) {
-		    	//if (Preferences.logging) Log.d(MetaWatch.TAG, "k9: "+cur.getCount()+ " unread rows returned");
+		    	Log.d(TAG, "k9: "+cur.getCount()+ " unread rows returned");
 
 		    	if (cur.getCount()>0) {
 			    	cur.moveToFirst();
 			    	int unread = 0;
-			    	//int nameIndex = cur.getColumnIndex("accountName");
+			    	int nameIndex = cur.getColumnIndex("accountName");
 			    	int unreadIndex = cur.getColumnIndex("unread");
 			    	do {
-			    		//String acct = cur.getString(nameIndex);
+			    		String acct = cur.getString(nameIndex);
 			    		int unreadForAcct = cur.getInt(unreadIndex);
-			    		//if (Preferences.logging) Log.d(MetaWatch.TAG, "k9: "+acct+" - "+unreadForAcct+" unread");
+			    		Log.d(TAG, "k9: "+acct+" - "+unreadForAcct+" unread");
 			    		unread += unreadForAcct;
 			    	} while (cur.moveToNext());
 				    cur.close();
@@ -117,11 +141,11 @@ public class K9MailExtension extends DashClockExtension {
 		    	}
 		    }
 		    else {
-		    	//if (Preferences.logging) Log.d(MetaWatch.TAG, "Failed to query k9 unread contentprovider.");
+		    	Log.d(TAG, "Failed to query k9 unread contentprovider.");
 		    }
 		}
 		catch (IllegalStateException e) {
-			//if (Preferences.logging) Log.d(MetaWatch.TAG, "k-9 unread uri unknown.");
+			Log.d(TAG, "k-9 unread uri unknown.");
 		}
 		return 0;
 	}
