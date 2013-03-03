@@ -19,8 +19,13 @@ package com.grapefruitopia.dashclock.k9;
 import java.util.ArrayList;
 import java.util.List;
 
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.PackageManager.NameNotFoundException;
 import android.database.ContentObserver;
 import android.database.Cursor;
 import android.net.Uri;
@@ -36,19 +41,53 @@ public class K9MailExtension extends DashClockExtension {
     
 	static final Uri k9AccountsUri = Uri.parse("content://com.fsck.k9.messageprovider/accounts/");
 	static final String k9UnreadUri = "content://com.fsck.k9.messageprovider/account_unread/";
-    
-	ContentObserver contentObserver = null;
+	static final String k9MessageProvider = "content://com.fsck.k9.messageprovider/";
 	
-    @Override
-    protected void onInitialize(boolean isReconnect) {
-    	super.onInitialize(isReconnect);
-    	
-    	Log.d(TAG, "onInitialize("+isReconnect+")");
-   
-    	
-    	// Register our own content observer, rather than using addWatchContentUris()
-    	// since DashClock might not have permission to access the database 	
-    	if(contentObserver == null) {
+	ContentObserver contentObserver = null;
+	BroadcastReceiver receiver = null;
+	IntentFilter filter = null;
+	
+	@Override
+	public void onCreate() {
+        super.onCreate();
+        
+        Log.d(TAG, "onCreate()");
+        
+        int versionNumber = 0;
+        
+        String packageName = "com.fsck.k9";
+        try {
+            PackageInfo pi = getApplicationContext().getPackageManager().getPackageInfo(packageName, PackageManager.GET_META_DATA);
+            versionNumber = pi.versionCode;
+            String versionName = pi.versionName;
+            
+            Log.d(TAG, "K-9 is installed - "+versionNumber+" "+versionName);
+            
+        } catch (NameNotFoundException e) {
+        	Log.d(TAG, "K-9 not found");
+        }
+        
+        if( versionNumber <= 16024 ) {
+	        // Register a listener for broadcasts (needed for the older versions of k9)
+			Log.d(TAG, "Initialising BroadcastReceiver for old K-9 version");
+			receiver = new BroadcastReceiver() {  
+		        @Override  
+		        public void onReceive(Context context, Intent intent) {  
+		            Log.d(TAG, "receiver.onReceive()");
+		            doRefresh();
+		        }
+		    };
+			
+			filter = new IntentFilter();
+			filter.addAction("com.fsck.k9.intent.action.EMAIL_RECEIVED");
+			filter.addAction("com.fsck.k9.intent.action.EMAIL_DELETED");
+			filter.addDataScheme("email");
+			registerReceiver(receiver, filter);
+        }
+        else {
+	    	// Register our own content observer, rather than using addWatchContentUris()
+	    	// since DashClock might not have permission to access the database 	
+			Log.d(TAG, "Initialising ContentObserver for new K-9 version");
 	    	contentObserver = new ContentObserver(null) {
 	            @Override
 	            public void onChange(boolean selfChange) {
@@ -57,7 +96,16 @@ public class K9MailExtension extends DashClockExtension {
 	            }
 	        };
 	        getContentResolver().registerContentObserver(Uri.parse(k9UnreadUri), true, contentObserver);
-    	}
+        }
+        
+	}
+	
+    @Override
+    protected void onInitialize(boolean isReconnect) {
+    	super.onInitialize(isReconnect);
+    	
+    	Log.d(TAG, "onInitialize("+isReconnect+")");
+       	
     }
     
     @Override
@@ -73,6 +121,10 @@ public class K9MailExtension extends DashClockExtension {
         if (contentObserver != null) {
             getContentResolver().unregisterContentObserver(contentObserver);
             contentObserver = null;
+        }
+        if (receiver!=null) {
+        	unregisterReceiver(receiver);
+        	receiver = null;
         }
     }
     
